@@ -5,6 +5,7 @@ import { CategoryGrid } from '@/components/CategoryGrid';
 import { ChannelGrid } from '@/components/ChannelGrid';
 import { VideoPlayer } from '@/components/VideoPlayer';
 import { iptvApi } from '@/services/iptvApi';
+import { streamManager } from '@/services/streamManager';
 import { Channel, Stream, Category, Logo } from '@/types/iptv';
 import { Loader2, Tv, AlertCircle } from 'lucide-react';
 
@@ -15,6 +16,7 @@ const Index = () => {
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [selectedStream, setSelectedStream] = useState<Stream | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
 
   const { data: channels = [], isLoading: channelsLoading } = useQuery({
     queryKey: ['channels'],
@@ -23,7 +25,7 @@ const Index = () => {
 
   const { data: streams = [], isLoading: streamsLoading } = useQuery({
     queryKey: ['streams'],
-    queryFn: iptvApi.getStreams,
+    queryFn: () => streamManager.getStreams().length > 0 ? streamManager.getStreams() : iptvApi.getStreams(),
   });
 
   const { data: categories = [], isLoading: categoriesLoading } = useQuery({
@@ -36,7 +38,27 @@ const Index = () => {
     queryFn: iptvApi.getLogos,
   });
 
-  const isLoading = channelsLoading || streamsLoading || categoriesLoading || logosLoading;
+  const isLoading = channelsLoading || streamsLoading || categoriesLoading || logosLoading || isInitializing;
+
+  // Initialize stream manager and preload streams
+  useEffect(() => {
+    const initializeApp = async () => {
+      try {
+        await streamManager.initialize();
+      } catch (error) {
+        console.error('Failed to initialize stream manager:', error);
+      } finally {
+        setIsInitializing(false);
+      }
+    };
+
+    initializeApp();
+
+    // Cleanup on unmount
+    return () => {
+      streamManager.destroy();
+    };
+  }, []);
 
   const handleCategorySelect = (category: Category) => {
     setSelectedCategory(category);

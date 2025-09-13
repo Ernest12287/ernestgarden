@@ -30,7 +30,35 @@ export const ChannelGrid = ({
   };
 
   const getChannelStream = (channelId: string) => {
-    return streams.find(s => s.channel === channelId);
+    // First try to find by channel ID
+    let stream = streams.find(s => s.channel === channelId);
+    
+    // If no direct match, try to find by channel name similarity
+    if (!stream) {
+      const channel = channels.find(c => c.id === channelId);
+      if (channel) {
+        stream = streams.find(s => 
+          s.title && channel.name && 
+          (s.title.toLowerCase().includes(channel.name.toLowerCase().split(' ')[0]) ||
+           channel.name.toLowerCase().includes(s.title.toLowerCase().split(' ')[0]))
+        );
+      }
+    }
+    
+    // Fallback: get any working stream if none found
+    if (!stream && streams.length > 0) {
+      // Try to get a stream that looks valid (has a proper URL)
+      const validStreams = streams.filter(s => 
+        s.url && 
+        (s.url.includes('.m3u8') || s.url.includes('http'))
+      );
+      if (validStreams.length > 0) {
+        const randomIndex = Math.floor(Math.random() * validStreams.length);
+        stream = validStreams[randomIndex];
+      }
+    }
+    
+    return stream;
   };
 
   return (

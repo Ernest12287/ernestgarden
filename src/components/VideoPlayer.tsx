@@ -1,8 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Channel, Stream } from '@/types/iptv';
-import { ArrowLeft, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, Play, Pause, RotateCcw } from 'lucide-react';
+import { streamManager } from '@/services/streamManager';
 import * as THREE from 'three';
 
 interface VideoPlayerProps {
@@ -18,6 +20,11 @@ export const VideoPlayer = ({ channel, stream, onBack }: VideoPlayerProps) => {
   const rendererRef = useRef<THREE.WebGLRenderer>();
   const cameraRef = useRef<THREE.PerspectiveCamera>();
   const animationRef = useRef<number>();
+  
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+  const [streamWarning, setStreamWarning] = useState<string | null>(null);
 
   useEffect(() => {
     if (!containerRef.current || !videoRef.current) return;
@@ -87,9 +94,35 @@ export const VideoPlayer = ({ channel, stream, onBack }: VideoPlayerProps) => {
   }, []);
 
   useEffect(() => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || !stream.url) return;
 
     const video = videoRef.current;
+    setIsLoading(true);
+    setHasError(false);
+    
+    // Check for stream warnings
+    const warning = streamManager.getStreamWarning(stream.url);
+    setStreamWarning(warning);
+    
+    // Set up video event listeners
+    const handleLoadStart = () => setIsLoading(true);
+    const handleCanPlay = () => {
+      setIsLoading(false);
+      setHasError(false);
+    };
+    const handleError = () => {
+      setIsLoading(false);
+      setHasError(true);
+    };
+    const handlePlay = () => setIsPlaying(true);
+    const handlePause = () => setIsPlaying(false);
+    
+    video.addEventListener('loadstart', handleLoadStart);
+    video.addEventListener('canplay', handleCanPlay);
+    video.addEventListener('error', handleError);
+    video.addEventListener('play', handlePlay);
+    video.addEventListener('pause', handlePause);
+    
     video.src = stream.url;
     
     // Set custom headers if provided
@@ -102,7 +135,33 @@ export const VideoPlayer = ({ channel, stream, onBack }: VideoPlayerProps) => {
     }
 
     video.load();
+    
+    return () => {
+      video.removeEventListener('loadstart', handleLoadStart);
+      video.removeEventListener('canplay', handleCanPlay);
+      video.removeEventListener('error', handleError);
+      video.removeEventListener('play', handlePlay);
+      video.removeEventListener('pause', handlePause);
+    };
   }, [stream]);
+
+  const togglePlayPause = () => {
+    if (!videoRef.current) return;
+    
+    if (videoRef.current.paused) {
+      videoRef.current.play();
+    } else {
+      videoRef.current.pause();
+    }
+  };
+
+  const reloadStream = () => {
+    if (!videoRef.current) return;
+    
+    setHasError(false);
+    setIsLoading(true);
+    videoRef.current.load();
+  };
 
   return (
     <div className="space-y-6">
@@ -147,13 +206,35 @@ export const VideoPlayer = ({ channel, stream, onBack }: VideoPlayerProps) => {
           >
             <video
               ref={videoRef}
-              className="hidden"
+              className="absolute inset-0 w-full h-full object-cover"
               controls={false}
               autoPlay
-              muted
+              muted={false}
               playsInline
               crossOrigin="anonymous"
             />
+            
+            {isLoading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                <div className="text-white text-center">
+                  <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                  <p>Loading stream...</p>
+                </div>
+              </div>
+            )}
+            
+            {hasError && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/80">
+                <div className="text-white text-center space-y-2">
+                  <AlertTriangle className="w-12 h-12 mx-auto text-destructive" />
+                  <p>Failed to load stream</p>
+                  <Button variant="secondary" size="sm" onClick={reloadStream}>
+                    <RotateCcw className="w-4 h-4 mr-2" />
+                    Retry
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
           
           <div className="p-4 space-y-4">
@@ -174,32 +255,46 @@ export const VideoPlayer = ({ channel, stream, onBack }: VideoPlayerProps) => {
               </div>
             </div>
 
+            {streamWarning && (
+              <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 mb-4">
+                <div className="flex items-center gap-2 text-destructive text-sm">
+                  <AlertTriangle className="w-4 h-4" />
+                  {streamWarning}
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-2">
               <Button 
                 size="sm" 
-                onClick={() => {
-                  if (videoRef.current) {
-                    if (videoRef.current.paused) {
-                      videoRef.current.play();
-                    } else {
-                      videoRef.current.pause();
-                    }
-                  }
-                }}
+                onClick={togglePlayPause}
+                disabled={hasError}
               >
-                Play/Pause
+                {isPlaying ? (
+                  <>
+                    <Pause className="w-4 h-4 mr-2" />
+                    Pause
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4 mr-2" />
+                    Play
+                  </>
+                )}
               </Button>
               <Button 
                 variant="outline" 
                 size="sm"
-                onClick={() => {
-                  if (videoRef.current) {
-                    videoRef.current.load();
-                  }
-                }}
+                onClick={reloadStream}
               >
-                Reload Stream
+                <RotateCcw className="w-4 h-4 mr-2" />
+                Reload
               </Button>
+              {streamManager.isStreamValidated(stream.url) && (
+                <Badge variant="secondary" className="ml-auto">
+                  Verified
+                </Badge>
+              )}
             </div>
           </div>
         </CardContent>

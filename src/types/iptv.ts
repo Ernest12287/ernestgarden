@@ -11,6 +11,7 @@ export interface Channel {
 export interface Stream {
   channel: string;
   url: string;
+  title?: string;
   http_referrer?: string;
   user_agent?: string;
   quality?: string;
