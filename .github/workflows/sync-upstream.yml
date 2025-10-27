@@ -1,0 +1,19 @@
+name: Sync IPTV Fork
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Every 6 hours
+  workflow_dispatch:
+
+jobs:
+  sync-fork:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync Fork
+        uses: repo-sync/github-sync@v2
+        with:
+          source_repo: 'iptv-org/iptv'
+          source_branch: 'master'
+          destination_branch: 'master'
+          github_token: ${{ secrets.GH_PAT }}
+          
