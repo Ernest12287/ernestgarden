@@ -1,3 +1,5 @@
+// src/types/iptv.ts
+
 export interface Channel {
   id: string;
   name: string;
@@ -6,6 +8,8 @@ export interface Channel {
   languages: string[];
   logo?: string;
   website?: string;
+  url?: string; // Added for direct channel URL
+  quality?: string; // Added for quality detection
 }
 
 export interface Stream {
@@ -26,12 +30,9 @@ export interface Category {
 export interface Logo {
   id: string;
   url: string;
-  width?: number;
-  height?: number;
 }
 
 export interface Country {
   code: string;
   name: string;
-  languages: string[];
 }

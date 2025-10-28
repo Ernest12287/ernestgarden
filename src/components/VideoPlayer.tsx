@@ -1,52 +1,38 @@
-// src/components/VideoPlayer.tsx - Improved version with HLS.js
 import { useEffect, useRef, useState } from 'react';
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Channel, Stream } from '@/types/iptv';
-import { ArrowLeft, AlertTriangle, Play, Pause, RotateCcw, Volume2, VolumeX } from 'lucide-react';
-import { streamManager } from '@/services/streamManager';
+import { Button } from '@/components/ui/button';
+import { ArrowLeft, AlertTriangle, Play, Pause, RotateCcw, Volume2, VolumeX, Loader2 } from 'lucide-react';
+import { Channel } from '@/types/iptv';
 
 interface VideoPlayerProps {
   channel: Channel;
-  stream: Stream;
   onBack: () => void;
 }
 
-export const VideoPlayer = ({ channel, stream, onBack }: VideoPlayerProps) => {
+export const VideoPlayer = ({ channel, onBack }: VideoPlayerProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<any>(null);
-  
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
   const [isMuted, setIsMuted] = useState(false);
-  const [streamWarning, setStreamWarning] = useState<string | null>(null);
 
   useEffect(() => {
     const loadVideo = async () => {
-      if (!videoRef.current || !stream.url) return;
+      if (!videoRef.current || !channel.url) return;
 
       setIsLoading(true);
       setHasError(false);
-      setErrorMessage('');
 
       const video = videoRef.current;
-      const streamUrl = streamManager.getProxiedUrl(stream.url);
-      
-      // Check for stream warnings
-      const warning = streamManager.getStreamWarning(stream.url);
-      setStreamWarning(warning);
+      const streamUrl = channel.url;
 
       try {
-        // Check if HLS stream
         if (streamUrl.includes('.m3u8')) {
-          // Dynamically import HLS.js only when needed
+          // Dynamic import of HLS.js
           const Hls = (await import('hls.js')).default;
-          
+
           if (Hls.isSupported()) {
-            // Destroy previous HLS instance
             if (hlsRef.current) {
               hlsRef.current.destroy();
             }
@@ -54,83 +40,52 @@ export const VideoPlayer = ({ channel, stream, onBack }: VideoPlayerProps) => {
             const hls = new Hls({
               enableWorker: true,
               lowLatencyMode: true,
-              backBufferLength: 90,
               maxBufferLength: 30,
-              maxMaxBufferLength: 600,
+              maxMaxBufferLength: 60,
             });
 
             hlsRef.current = hls;
-
             hls.loadSource(streamUrl);
             hls.attachMedia(video);
 
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
-              console.log('✅ HLS manifest loaded');
               setIsLoading(false);
-              video.play().catch(e => {
-                console.log('Autoplay prevented:', e);
-                setIsPlaying(false);
-              });
+              video.play().catch(() => setIsPlaying(false));
             });
 
             hls.on(Hls.Events.ERROR, (event, data) => {
-              console.error('❌ HLS error:', data);
-              
               if (data.fatal) {
+                console.error('HLS Error:', data);
                 setHasError(true);
                 setIsLoading(false);
-                
-                switch (data.type) {
-                  case Hls.ErrorTypes.NETWORK_ERROR:
-                    setErrorMessage('Network error - Stream may be unavailable');
-                    hls.startLoad();
-                    break;
-                  case Hls.ErrorTypes.MEDIA_ERROR:
-                    setErrorMessage('Media error - Trying to recover...');
-                    hls.recoverMediaError();
-                    break;
-                  default:
-                    setErrorMessage('Fatal error - Cannot play this stream');
-                    break;
-                }
               }
             });
-
           } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
             // Native HLS support (Safari)
             video.src = streamUrl;
             video.addEventListener('loadedmetadata', () => {
               setIsLoading(false);
-              video.play().catch(e => console.log('Autoplay prevented:', e));
+              video.play().catch(() => {});
             });
-          } else {
-            setHasError(true);
-            setErrorMessage('HLS not supported in this browser');
-            setIsLoading(false);
           }
         } else {
-          // Regular video stream
+          // Direct video URL
           video.src = streamUrl;
           video.load();
         }
 
-        // Video event listeners
         video.addEventListener('play', () => setIsPlaying(true));
         video.addEventListener('pause', () => setIsPlaying(false));
         video.addEventListener('waiting', () => setIsLoading(true));
         video.addEventListener('canplay', () => setIsLoading(false));
-        video.addEventListener('error', (e) => {
-          console.error('Video error:', e);
+        video.addEventListener('error', () => {
           setHasError(true);
           setIsLoading(false);
-          setErrorMessage('Failed to load stream - Source may be offline');
         });
-
       } catch (error) {
-        console.error('Failed to load stream:', error);
+        console.error('Video load error:', error);
         setHasError(true);
         setIsLoading(false);
-        setErrorMessage('Failed to initialize player');
       }
     };
 
@@ -142,11 +97,10 @@ export const VideoPlayer = ({ channel, stream, onBack }: VideoPlayerProps) => {
         hlsRef.current = null;
       }
     };
-  }, [stream]);
+  }, [channel]);
 
   const togglePlayPause = () => {
     if (!videoRef.current) return;
-    
     if (videoRef.current.paused) {
       videoRef.current.play();
     } else {
@@ -162,52 +116,35 @@ export const VideoPlayer = ({ channel, stream, onBack }: VideoPlayerProps) => {
 
   const reloadStream = () => {
     if (!videoRef.current) return;
-    
     setHasError(false);
     setIsLoading(true);
-    
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
-    
-    // Trigger reload
     videoRef.current.load();
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button 
-            variant="outline" 
-            size="sm"
+    <>
+      {/* Header */}
+      <header className="border-b border-slate-800 bg-slate-900/50 backdrop-blur-sm sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+          <Button
             onClick={onBack}
-            className="flex items-center gap-2"
+            variant="outline"
+            size="sm"
+            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white border-slate-700"
           >
             <ArrowLeft className="w-4 h-4" />
-            Back
+            Back to Channels
           </Button>
-          <div>
-            <h2 className="text-2xl font-bold">{channel.name}</h2>
-            <p className="text-muted-foreground">{channel.country}</p>
-          </div>
         </div>
-      </div>
+      </header>
 
-      {streamWarning && (
-        <Card className="bg-destructive/10 border-destructive/20">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-destructive text-sm">
-              <AlertTriangle className="w-4 h-4" />
-              {streamWarning}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <Card className="overflow-hidden">
-        <CardContent className="p-0">
+      {/* Video Player */}
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
           <div className="relative w-full aspect-video bg-black">
             <video
               ref={videoRef}
@@ -216,23 +153,30 @@ export const VideoPlayer = ({ channel, stream, onBack }: VideoPlayerProps) => {
               playsInline
               crossOrigin="anonymous"
             />
-            
+
             {isLoading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                <div className="text-white text-center">
-                  <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                  <p>Loading stream...</p>
+              <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+                <div className="text-center space-y-3">
+                  <Loader2 className="w-12 h-12 animate-spin text-blue-500 mx-auto" />
+                  <p className="text-white font-semibold">Loading stream...</p>
+                  <p className="text-slate-400 text-sm">Please wait</p>
                 </div>
               </div>
             )}
-            
+
             {hasError && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/80">
-                <div className="text-white text-center space-y-3 p-6">
-                  <AlertTriangle className="w-12 h-12 mx-auto text-destructive" />
-                  <p className="font-semibold">Stream Error</p>
-                  <p className="text-sm">{errorMessage}</p>
-                  <Button variant="secondary" size="sm" onClick={reloadStream}>
+              <div className="absolute inset-0 flex items-center justify-center bg-black/90">
+                <div className="text-center space-y-4 p-6">
+                  <AlertTriangle className="w-16 h-16 text-red-500 mx-auto" />
+                  <div>
+                    <p className="text-white font-semibold text-lg mb-2">Stream Error</p>
+                    <p className="text-slate-400 text-sm mb-1">Cannot load this stream</p>
+                    <p className="text-slate-500 text-xs">The stream may be offline or unavailable</p>
+                  </div>
+                  <Button
+                    onClick={reloadStream}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
                     <RotateCcw className="w-4 h-4 mr-2" />
                     Try Again
                   </Button>
@@ -240,30 +184,19 @@ export const VideoPlayer = ({ channel, stream, onBack }: VideoPlayerProps) => {
               </div>
             )}
           </div>
-          
-          <div className="p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold">{channel.name}</h3>
-                <p className="text-sm text-muted-foreground">
-                  {channel.categories.join(', ')} • {channel.country}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                {streamManager.isStreamValidated(stream.url) && (
-                  <Badge variant="secondary">Verified</Badge>
-                )}
-                {stream.quality && (
-                  <Badge variant="outline">{stream.quality}</Badge>
-                )}
-              </div>
+
+          {/* Player Controls */}
+          <div className="p-6 space-y-4 bg-gradient-to-r from-slate-900 via-slate-900 to-slate-800">
+            <div>
+              <h2 className="text-2xl font-bold text-white mb-1">{channel.name}</h2>
+              <p className="text-slate-400">{channel.country}</p>
             </div>
 
-            <div className="flex gap-2">
-              <Button 
-                size="sm" 
+            <div className="flex flex-wrap gap-2">
+              <Button
                 onClick={togglePlayPause}
                 disabled={hasError}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 text-white"
               >
                 {isPlaying ? (
                   <>
@@ -277,32 +210,34 @@ export const VideoPlayer = ({ channel, stream, onBack }: VideoPlayerProps) => {
                   </>
                 )}
               </Button>
-              
-              <Button 
-                variant="outline" 
-                size="sm"
+
+              <Button
                 onClick={toggleMute}
                 disabled={hasError}
+                variant="outline"
+                className="bg-slate-800 hover:bg-slate-700 text-white border-slate-700"
               >
-                {isMuted ? (
-                  <VolumeX className="w-4 h-4" />
-                ) : (
-                  <Volume2 className="w-4 h-4" />
-                )}
+                {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
               </Button>
-              
-              <Button 
-                variant="outline" 
-                size="sm"
+
+              <Button
                 onClick={reloadStream}
+                variant="outline"
+                className="bg-slate-800 hover:bg-slate-700 text-white border-slate-700"
               >
                 <RotateCcw className="w-4 h-4 mr-2" />
                 Reload
               </Button>
+
+              {channel.quality && (
+                <div className="ml-auto flex items-center px-3 py-2 bg-blue-500/20 border border-blue-500/30 text-blue-400 text-sm rounded-lg">
+                  {channel.quality}
+                </div>
+              )}
             </div>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+      </main>
+    </>
   );
 };

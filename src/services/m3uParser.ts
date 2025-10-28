@@ -92,7 +92,7 @@ export class M3UParser {
     return this.parseM3U(url);
   }
 
-  async getAllStreams(maxCountries: number = 10): Promise<M3UInfo[]> {
+  async getAllStreams(maxCountries: number = 100): Promise<M3UInfo[]> {
     console.log(`🌍 Loading streams from ${maxCountries} countries...`);
     
     const promises = this.COUNTRIES.slice(0, maxCountries).map(country =>
